@@ -14,7 +14,7 @@ def stream_response(query):
     full_text = ""
     placeholder = st.empty()
 
-    for chunk in response.iter_content(chunk_size=1:
+    for chunk in response.iter_content(chunk_size=1):
         if chunk:
             text = chunk.decode("utf-8")
             full_text += text
