@@ -1,5 +1,6 @@
-from http import client
-
+from groq import Groq
+import os
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 from fastapi import FastAPI
 from fastapi import HTTPException
 from services.crypto_service import fetch_crypto_data as fetch_data
@@ -7,10 +8,12 @@ from utils.processor import process_crypto_data as process_data
 from services.ai_service import ask_llm
 from fastapi import HTTPException
 from services.rag_service import add_documents, retrieve, generate_answer
+
 from fastapi.responses import StreamingResponse
 from services.rag_service import retrieve, generate_answer, rewrite_query
 from fastapi import UploadFile, File
 from services.document_service import process_uploaded_file
+import shutil
 
 
 app = FastAPI()
@@ -119,7 +122,7 @@ def ask_rag_stream(query: str):
         """
 
         response = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             stream=True
         )
@@ -186,3 +189,22 @@ def chat_stream(query: str):
 @app.get("/health")
 def health():
 	return {"status": "ok"}
+
+@app.get("/ask-rag-stream")
+def ask_rag_stream(query: str):
+
+	context_docs = retrieve(query)
+
+	return StreamingResponse(
+            generate_answer_stream(query, context_docs),
+			media_type="text/plain"
+	)
+
+@app.post("/upload-pdf")
+async def upload_pdf(file: UploadFile = File(...)):
+    file_path = f"/temp/{file.filename}"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    add_pdf(file_path)
+    return {"message": f"{file.filename} uploaded and processed"}

@@ -7,6 +7,7 @@ from pinecone import Pinecone
 import os
 import logging
 logging.basicConfig(level=logging.INFO)
+import fitz # PyMuPDF
 
 
 
@@ -98,29 +99,10 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 def generate_answer(query, context_docs):
-    
-    chat_history.append({"role": "user", "content": query})
-    messages = chat_history + [{"role": "system", "content": f"Context:\n{context}"}]   
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=messages
-    )
-
-    answer = response.choices[0].message.content
-    chat_history.append({"role": "assistant", "content": answer})
-
-    cache_key = query + str(context_docs)
-
-    logging.info(f"Query: {query}")
-    logging.info(f"Context docs: {context_docs}")  
-
-    if cache_key in cache:
-        return cache[cache_key]
-
-    context = "\n\n".join(context_docs)
+    context = "\n".join(context_docs)
 
     prompt = f"""
-    Answer using the context below.
+    Answer the question based ONLY on the context below.
 
     Context:
     {context}
@@ -131,14 +113,14 @@ def generate_answer(query, context_docs):
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{"role": "user", "content": prompt}],
+        stream=True
     )
-
-    answer = response.choices[0].message.content
-
-    cache[cache_key] = answer
-
-    return answer
+    for chunk in response:
+        if hasattr(chunk.choices[0].delta, "content"):
+            token = chunk.choices[0].delta.content
+            if token:
+                yield token
 
     
 
@@ -169,3 +151,21 @@ def chunk_text(text, chunk_size=200, overlap=50):
         start += chunk_size - overlap
 
     return chunks
+
+def extract_text_from_pdf(file_path):
+    doc = fitz.open(file_path)
+    text = ""
+
+    for page in doc:
+        text += page.get_text()
+
+    return text
+
+def chunk_text(text, chunk_size=500):
+    return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+
+def add_pdf_document(file_path):
+    text = extract_text_from_pdf(file_path)
+    chunks = chunk_text(text)
+
+    add_documents(chunks)

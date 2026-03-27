@@ -5,7 +5,24 @@ st.set_page_config(page_title="AI Assistant", layout="wide")
 
 st.title("🤖 AI Knowledge Assistant")
 
-API_URL = "http://54.156.120.43/api"  # update this
+API_URL = "http://54.156.120.43/api"
+
+def stream_response(query):
+    url = f"{API_URL}/ask-rag-stream"
+    response = requests.get(url, params={"query": query}, stream=True)
+
+    full_text = ""
+    placeholder = st.empty()
+
+    for chunk in response.iter_content(chunk_size=1:
+        if chunk:
+            text = chunk.decode("utf-8")
+            full_text += text
+            placeholder.markdown(full_text)
+
+    return full_text
+
+
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -29,24 +46,20 @@ if user_input:
     # Call API
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            try:
-                response = requests.get(
-                    f"{API_URL}/ask-rag",
-                    params={"query": user_input}
-                )
+            answer = stream_response(user_input)
 
-                data = response.json()
-                answer = data.get("answer", "No response")
-
-                st.markdown(answer)
-
-                # Save assistant response
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": answer
-                })
-
-            except Exception as e:
-                st.error(f"Error: {e}")
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+            
 
 
+uploaded_file = st.file_uploader("Upload a document (txt or pdf)", type=["txt", "pdf"])
+
+if uploaded_file:
+    with open("temp.pdf", "wb") as f:
+        f.write(uploaded_file.read())
+
+    files = {"file": open("temp.pdf", "rb")}
+
+    res= requests.post(f"{API_URL}/upload-pdf", files=files)
+
+    st.success("PDF uploaded and processed successfully!")
