@@ -1,3 +1,5 @@
+from http import client
+
 from fastapi import FastAPI
 from fastapi import HTTPException
 from services.crypto_service import fetch_crypto_data as fetch_data
@@ -7,6 +9,8 @@ from fastapi import HTTPException
 from services.rag_service import add_documents, retrieve, generate_answer
 from fastapi.responses import StreamingResponse
 from services.rag_service import retrieve, generate_answer, rewrite_query
+from fastapi import UploadFile, File
+from services.document_service import process_uploaded_file
 
 
 app = FastAPI()
@@ -125,3 +129,60 @@ def ask_rag_stream(query: str):
 
     return StreamingResponse(stream_answer(), media_type="text/plain")
 
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+	try:
+		result = process_uploaded_file(file)
+		return result
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=f"File processing failed: {str(e)}")
+
+@app.post("/chat")
+def chat(query: str):
+	context_docs = retrieve(query)
+
+	if "No documents" in context_docs[0]:
+		return {"error": context_docs[0]}
+
+	answer = generate_answer(query, context_docs)
+
+	return {
+		"query": query,
+		"context_used": context_docs,
+		"answer": answer
+	}
+
+@app.get("/chat-stream")
+def chat_stream(query: str):
+
+	
+
+	context_docs = retrieve(query)
+
+	def stream():
+		context = "\n\n".join(context_docs)
+
+		prompt = f"""
+		Answer using the context below.
+
+		Context:
+		{context}
+
+		Question:
+		{query}
+		"""
+
+		response = client.chat.completions.create(
+			model="llama-3.3-70b-versatile",
+			messages=[{"role": "user", "content": prompt}],
+			stream=True
+		)
+
+		for chunk in response:
+			yield chunk.choices[0].delta.content or ""
+
+	return StreamingResponse(stream(), media_type="text/plain")
+
+@app.get("/health")
+def health():
+	return {"status": "ok"}

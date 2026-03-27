@@ -22,6 +22,7 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 # In-memory storage
 documents = []
 embeddings = None
+chat_history = []
 
 
 # Step 1: Add documents
@@ -97,6 +98,17 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 def generate_answer(query, context_docs):
+    
+    chat_history.append({"role": "user", "content": query})
+    messages = chat_history + [{"role": "system", "content": f"Context:\n{context}"}]   
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages
+    )
+
+    answer = response.choices[0].message.content
+    chat_history.append({"role": "assistant", "content": answer})
+
     cache_key = query + str(context_docs)
 
     logging.info(f"Query: {query}")
@@ -127,6 +139,8 @@ def generate_answer(query, context_docs):
     cache[cache_key] = answer
 
     return answer
+
+    
 
 def rewrite_query(query):
     prompt = f"Rewrite this query to be more specific:\n{query}"
